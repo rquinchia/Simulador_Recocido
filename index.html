@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Simulador de Recocido · Soldadura para Trefilado</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root{
+    --bg:#080c12; --panel:rgba(18,24,33,.72); --panel-solid:#121821;
+    --line:rgba(120,150,180,.16); --txt:#e7edf3; --muted:#8ea0b3;
+    --cyan:#37d0e0; --amber:#ffb020; --green:#37d67a; --red:#ff5a48;
+    --accent:#37d0e0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--txt);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+  #app{position:fixed;inset:0}
+  canvas{display:block}
+
+  /* ---------- Top bar ---------- */
+  .topbar{position:absolute;top:0;left:0;right:0;height:58px;z-index:20;
+    display:flex;align-items:center;justify-content:space-between;padding:0 20px;
+    background:linear-gradient(180deg,rgba(8,12,18,.92),rgba(8,12,18,0));pointer-events:none}
+  .brand{display:flex;align-items:center;gap:12px;pointer-events:auto}
+  .brand .dot{width:11px;height:11px;border-radius:50%;background:var(--cyan);
+    box-shadow:0 0 12px var(--cyan)}
+  .brand h1{font-size:15px;font-weight:700;letter-spacing:.5px}
+  .brand h1 span{color:var(--muted);font-weight:500}
+  .brand small{display:block;font-size:10.5px;color:var(--muted);letter-spacing:1.6px;text-transform:uppercase;margin-top:1px}
+  .lang{pointer-events:auto;display:flex;gap:4px;background:rgba(0,0,0,.35);
+    border:1px solid var(--line);border-radius:8px;padding:3px}
+  .lang button{background:none;border:none;color:var(--muted);font-size:11px;font-weight:700;
+    padding:4px 10px;border-radius:6px;cursor:pointer;letter-spacing:.5px}
+  .lang button.on{background:var(--cyan);color:#04121a}
+
+  /* ---------- Left control panel ---------- */
+  .panel{position:absolute;z-index:15;background:var(--panel);backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:16px;
+    box-shadow:0 18px 50px rgba(0,0,0,.45)}
+  .rail{position:absolute;top:70px;right:20px;z-index:15;display:flex;flex-direction:column;
+    gap:12px;width:212px}
+  .rail .panel{position:relative;inset:auto;width:100%}
+  .left{top:70px;left:20px;width:320px;padding:18px}
+  .plabel{font-size:10px;letter-spacing:1.8px;text-transform:uppercase;color:var(--muted);
+    margin-bottom:12px;font-weight:700}
+  .grades{display:flex;flex-direction:column;gap:10px}
+  .grade{position:relative;border:1px solid var(--line);border-radius:12px;padding:13px 14px;
+    cursor:pointer;background:rgba(255,255,255,.02);transition:.18s;overflow:hidden}
+  .grade:hover{transform:translateY(-2px);border-color:rgba(120,150,180,.4)}
+  .grade.sel{border-color:var(--g);box-shadow:0 0 0 1px var(--g),0 8px 24px rgba(0,0,0,.35)}
+  .grade .bar{position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--g)}
+  .grade .gt{display:flex;align-items:baseline;justify-content:space-between}
+  .grade .gt b{font-size:14px;font-weight:700}
+  .grade .gt .aisi{font-size:11px;color:var(--muted);font-family:'SF Mono',ui-monospace,monospace}
+  .grade .gd{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4}
+  .grade .pill{display:inline-block;margin-top:8px;font-size:10px;font-weight:700;
+    letter-spacing:.4px;padding:3px 9px;border-radius:20px;background:var(--g);color:#06121a}
+
+  .actions{margin-top:16px;display:flex;flex-direction:column;gap:9px}
+  .btn{border:none;border-radius:11px;padding:13px;font-size:13px;font-weight:700;
+    letter-spacing:.4px;cursor:pointer;transition:.16s;display:flex;align-items:center;
+    justify-content:center;gap:8px}
+  .btn:disabled{opacity:.35;cursor:not-allowed}
+  .btn-primary{background:linear-gradient(135deg,var(--cyan),#2496c0);color:#04121a;
+    box-shadow:0 6px 18px rgba(55,208,224,.28)}
+  .btn-primary:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 10px 26px rgba(55,208,224,.4)}
+  .btn-opt{background:rgba(255,255,255,.06);color:var(--txt);border:1px solid var(--line)}
+  .btn-opt:hover:not(:disabled){background:rgba(255,255,255,.11)}
+  .btn-reset{background:rgba(255,90,72,.12);color:var(--red);border:1px solid rgba(255,90,72,.3)}
+  .btn-reset:hover:not(:disabled){background:rgba(255,90,72,.2)}
+
+  .verdict{margin-top:14px;padding:13px;border-radius:12px;border:1px solid var(--line);
+    background:rgba(0,0,0,.25);font-size:12.5px;line-height:1.5;display:none}
+  .verdict.show{display:block;animation:fade .3s}
+  .verdict .vh{font-weight:700;font-size:13px;margin-bottom:5px;display:flex;align-items:center;gap:7px}
+  .verdict .vh .ic{width:8px;height:8px;border-radius:50%}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  /* ---------- Right: temperature gauge ---------- */
+  .right{padding:16px 16px 18px;text-align:center}
+  .gauge-title{font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--muted);
+    font-weight:700;margin-bottom:10px}
+  .therm{display:flex;gap:14px;align-items:stretch;justify-content:center;height:250px}
+  .tube{position:relative;width:26px;border-radius:14px;background:rgba(0,0,0,.5);
+    border:1px solid var(--line);overflow:hidden}
+  .fill{position:absolute;left:0;right:0;bottom:0;border-radius:0 0 13px 13px;
+    transition:height .12s linear,background .2s linear}
+  .ticks{display:flex;flex-direction:column;justify-content:space-between;font-size:9px;
+    color:var(--muted);font-family:'SF Mono',ui-monospace,monospace;text-align:left;padding:2px 0}
+  .readout{margin-top:14px}
+  .readout .val{font-size:38px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;
+    transition:color .2s}
+  .readout .val span{font-size:17px;color:var(--muted);font-weight:600}
+  .readout .tgt{font-size:11px;color:var(--muted);margin-top:5px;letter-spacing:.3px}
+  .readout .tgt b{color:var(--amber)}
+
+  /* ---------- Bottom status ---------- */
+  .status{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:15;
+    min-width:340px;max-width:min(680px,92vw);padding:14px 20px;text-align:center}
+  .status .step{font-size:10px;letter-spacing:1.8px;text-transform:uppercase;color:var(--cyan);
+    font-weight:700;margin-bottom:4px;min-height:13px}
+  .status .msg{font-size:14.5px;font-weight:600;line-height:1.4}
+  .status .msg.big{font-size:16px;color:var(--green)}
+  .prog{margin-top:11px;height:5px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden}
+  .prog i{display:block;height:100%;width:0;border-radius:4px;
+    background:linear-gradient(90deg,var(--cyan),var(--amber));transition:width .15s linear}
+  .transport{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:11px;
+    flex-wrap:wrap}
+  .tbtn{background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--txt);
+    font-size:12px;font-weight:700;padding:7px 14px;border-radius:9px;cursor:pointer;
+    letter-spacing:.3px;transition:.14s;display:flex;align-items:center;gap:5px}
+  .tbtn:hover{background:rgba(255,255,255,.12)}
+  .tbtn.paused{background:var(--amber);color:#1a1200;border-color:var(--amber)}
+  .speeds{display:flex;gap:3px;background:rgba(0,0,0,.35);border:1px solid var(--line);
+    border-radius:9px;padding:3px}
+  .speeds button{background:none;border:none;color:var(--muted);font-size:11.5px;font-weight:700;
+    padding:5px 9px;border-radius:6px;cursor:pointer;font-variant-numeric:tabular-nums;transition:.12s}
+  .speeds button:hover{color:var(--txt)}
+  .speeds button.on{background:var(--cyan);color:#04121a}
+  .speeds .slab{color:var(--muted);font-size:9px;letter-spacing:1px;text-transform:uppercase;
+    align-self:center;padding:0 4px 0 4px}
+
+  /* ---------- Color legend ---------- */
+  .legend{padding:13px 15px}
+  .legend .lg-h{font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--muted);
+    font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between}
+  .legend .lg-h em{font-style:normal;color:var(--cyan);font-size:9px}
+  .lgrow{display:flex;align-items:center;gap:10px;margin:5px 0}
+  .lgsw{width:34px;height:15px;border-radius:4px;flex:none;box-shadow:inset 0 0 4px rgba(0,0,0,.4)}
+  .lgt{font-size:10.5px;color:var(--muted)}
+  .lgt b{color:var(--txt);font-family:'SF Mono',ui-monospace,monospace}
+
+  /* ---------- Standard table (supervisor) ---------- */
+  .std{bottom:20px;right:20px;width:270px;padding:14px 16px}
+  .std .lg-h{font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--muted);
+    font-weight:700;margin-bottom:9px}
+  .std table{width:100%;border-collapse:collapse;font-size:10.5px}
+  .std td{padding:5px 3px;border-top:1px solid var(--line);vertical-align:top}
+  .std tr:first-child td{border-top:none}
+  .std .gc{font-weight:700;white-space:nowrap}
+  .std .n{color:var(--muted);text-align:right;font-family:'SF Mono',ui-monospace,monospace}
+
+  .hint{position:absolute;bottom:20px;left:20px;z-index:14;font-size:10px;color:var(--muted);
+    letter-spacing:.4px;opacity:.75;display:none}
+  @media(max-width:1180px){.legend,.std{display:none}}
+  @media(max-width:820px){.left{width:270px}.rail{width:186px}}
+  .foot{position:absolute;left:0;right:0;bottom:0;text-align:center;font-size:9px;color:#5b6b7c;
+    padding:3px;z-index:10;pointer-events:none;letter-spacing:.3px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="dot"></div>
+    <div>
+      <h1 data-i="title">Simulador de Recocido <span>· Soldadura para Trefilado</span></h1>
+      <small data-i="sub">Alambrón al carbono · Ø 5.5 – 12 mm · Operadores & Supervisores</small>
+    </div>
+  </div>
+  <div class="lang">
+    <button id="es" class="on">ES</button>
+    <button id="en">EN</button>
+  </div>
+</div>
+
+<!-- Control panel -->
+<div class="panel left">
+  <div class="plabel" data-i="selectGrade">1 · Seleccione grado de carbono</div>
+  <div class="grades" id="grades"></div>
+
+  <div class="verdict" id="verdict">
+    <div class="vh"><span class="ic"></span><span id="vTitle"></span></div>
+    <div id="vBody"></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" id="runBtn" disabled data-i="run">Iniciar recocido</button>
+    <button class="btn btn-opt" id="optBtn" style="display:none" data-i="runOpt">Ejecutar recocido opcional</button>
+    <button class="btn btn-reset" id="resetBtn" data-i="reset">Reiniciar</button>
+  </div>
+</div>
+
+<div class="rail">
+<!-- Temperature gauge -->
+<div class="panel right">
+  <div class="gauge-title" data-i="temp">Temperatura</div>
+  <div class="therm">
+    <div class="tube"><div class="fill" id="fill"></div></div>
+    <div class="ticks">
+      <span>1100</span><span>900</span><span>700</span><span>500</span><span>300</span><span>25°</span>
+    </div>
+  </div>
+  <div class="readout">
+    <div class="val" id="tempVal">25<span>°C</span></div>
+    <div class="tgt" id="tgt"></div>
+  </div>
+</div>
+
+<!-- Color legend -->
+<div class="panel legend">
+  <div class="lg-h"><span data-i="legend">Referencia color / temperatura</span><em data-i="cal">CALIBRADO</em></div>
+  <div id="legendRows"></div>
+</div>
+</div><!-- /rail -->
+
+<!-- Standard summary -->
+<div class="panel std">
+  <div class="lg-h" data-i="standard">Estándar de recocido</div>
+  <table id="stdTable"></table>
+</div>
+
+<!-- Status -->
+<div class="panel status">
+  <div class="transport">
+    <button class="tbtn" id="pauseBtn">⏸ <span data-i="pause">Pausa</span></button>
+    <div class="speeds">
+      <span class="slab" data-i="speed">Vel</span>
+      <button data-s="1">1x</button><button data-s="2" class="on">2x</button><button data-s="3">3x</button><button data-s="4">4x</button><button data-s="5">5x</button>
+    </div>
+  </div>
+  <div class="step" id="stStep"></div>
+  <div class="msg" id="stMsg" data-i="idle">Seleccione un grado para comenzar.</div>
+  <div class="prog"><i id="stProg"></i></div>
+</div>
+
+<div class="foot">Recocido suave 650–750 °C (Strecker) · Normalizado ≤ 950 °C · Enfriar &lt; 538 °C para retirar de mordazas (manual) · 60 °C = listo para trefilar (umbral de manejo)</div>
+
+<script>
+/* ============================================================
+   i18n
+============================================================ */
+const I18N = {
+  es:{
+    title:'Simulador de Recocido <span>· Soldadura para Trefilado</span>',
+    sub:'Alambrón al carbono · Ø 5.5 – 12 mm · Operadores & Supervisores',
+    selectGrade:'1 · Seleccione grado de carbono',
+    run:'Iniciar recocido', runOpt:'Ejecutar recocido opcional', reset:'Reiniciar',
+    temp:'Temperatura', legend:'Referencia color / temperatura', cal:'CALIBRADO',
+    standard:'Estándar de recocido', idle:'Seleccione un grado para comenzar.',
+    ready:'✓ Puede iniciar el proceso de TREFILADO',
+    heating:'Calentando — el color avanza del centro hacia las mordazas',
+    cooling:'Enfriando al aire — la martensita se transforma a perlita/ferrita',
+    holdF:'Punto de pecas alcanzado — retirar calor',
+    hold:'Temperatura objetivo alcanzada',
+    between:'Enfriado a 120 °C → iniciando SEGUNDO recocido',
+    noAnneal:'No requiere recocido', optAvail:'Recocido opcional disponible',
+    req1:'Requiere 1 recocido', req2:'Requiere 2 recocidos (secuencia)',
+    target:'Objetivo', anneal:'Recocido', normal:'1° Normalizado', soft:'2° Suave',
+    stepHeat:'Calentamiento', stepCool:'Enfriamiento', stepReady:'Listo',
+    pause:'Pausa', resume:'Reanudar', speed:'Vel',
+    paused:'⏸ EN PAUSA — explique color y temperatura',
+    loading:'Cargando', ejecting:'Descargando',
+    loadMsg:'Introduciendo alambre · cerrando mordaza (palanca a 45°)',
+    ejectMsg:'Abriendo mordaza (palanca vertical) · retirando alambre'
+  },
+  en:{
+    title:'Annealing Simulator <span>· Weld for Wire Drawing</span>',
+    sub:'Carbon wire rod · Ø 5.5 – 12 mm · Operators & Supervisors',
+    selectGrade:'1 · Select carbon grade',
+    run:'Start annealing', runOpt:'Run optional anneal', reset:'Reset',
+    temp:'Temperature', legend:'Color / temperature reference', cal:'CALIBRATED',
+    standard:'Annealing standard', idle:'Select a grade to begin.',
+    ready:'✓ Ready to start WIRE DRAWING',
+    heating:'Heating — color advances from center toward jaws',
+    cooling:'Air cooling — martensite transforms to pearlite/ferrite',
+    holdF:'Fleck point reached — remove heat',
+    hold:'Target temperature reached',
+    between:'Cooled to 120 °C → starting SECOND anneal',
+    noAnneal:'No anneal required', optAvail:'Optional anneal available',
+    req1:'Requires 1 anneal', req2:'Requires 2 anneals (sequence)',
+    target:'Target', anneal:'Anneal', normal:'1st Normalize', soft:'2nd Soft',
+    stepHeat:'Heating', stepCool:'Cooling', stepReady:'Ready',
+    pause:'Pause', resume:'Resume', speed:'Spd',
+    paused:'⏸ PAUSED — explain color and temperature',
+    loading:'Loading', ejecting:'Unloading',
+    loadMsg:'Inserting wire · closing clamp (lever to 45°)',
+    ejectMsg:'Opening clamp (lever vertical) · removing wire'
+  }
+};
+let LANG='es';
+const t=k=>I18N[LANG][k];
+
+/* ============================================================
+   Metallurgy config  (grades, anneals, target temps)
+   Sourced: soft anneal 650–750°C (Strecker); normalizing ≤950°C;
+   incandescence color scale (MachineMFG / blacksmith heat colors).
+============================================================ */
+const AMBIENT=25, DRAW_READY=60, BETWEEN_T=120;
+const GRADES={
+  low:{ key:'low', g:'var(--green)', gcss:'#37d67a',
+    name:{es:'Bajo Carbono',en:'Low Carbon'}, aisi:'AISI 1004–1018',
+    desc:{es:'≤ 0.18 % C · alambre recocido / mallas',en:'≤ 0.18 % C · annealed / mesh wire'},
+    anneals:0, optional:{peak:680,coolTo:DRAW_READY,flecks:false,
+      label:{es:'Opcional',en:'Optional'}} },
+  med:{ key:'med', g:'var(--amber)', gcss:'#ffb020',
+    name:{es:'Medio Carbono',en:'Medium Carbon'}, aisi:'AISI 1022–1055',
+    desc:{es:'0.22–0.55 % C · strand, arandelas',en:'0.22–0.55 % C · strand, washers'},
+    anneals:1, steps:[{peak:720,coolTo:DRAW_READY,flecks:false,
+      label:{es:'Recocido suave',en:'Soft anneal'}}] },
+  high:{ key:'high', g:'var(--red)', gcss:'#ff5a48',
+    name:{es:'Alto Carbono',en:'High Carbon'}, aisi:'AISI 1060–1080',
+    desc:{es:'0.60–0.80 % C · cordón, PC strand, resorte',en:'0.60–0.80 % C · cord, PC strand, spring'},
+    anneals:2, steps:[
+      {peak:860,coolTo:BETWEEN_T,flecks:true, label:{es:'1° Normalizado (pecas)',en:'1st Normalize (flecks)'}},
+      {peak:700,coolTo:DRAW_READY,flecks:false,label:{es:'2° Recocido suave',en:'2nd Soft anneal'}}
+    ]}
+};
+
+/* Standard table rows */
+const STD=[
+  {g:'#37d67a',n:{es:'Bajo',en:'Low'},a:'0',tt:{es:'—',en:'—'}},
+  {g:'#ffb020',n:{es:'Medio',en:'Med'},a:'1',tt:'650–750°C'},
+  {g:'#ff5a48',n:{es:'Alto',en:'High'},a:'2',tt:{es:'~860° + ~700°',en:'~860° + ~700°'}}
+];
+
+/* Incandescence color ramp (JS mirror of shader) */
+function incand(T){
+  const stops=[[480,60,5,0],[560,120,10,0],[650,170,25,0],[730,205,45,0],
+    [800,235,70,5],[860,255,105,15],[930,255,140,30],[990,255,175,55],
+    [1050,255,205,90],[1150,255,235,150]];
+  if(T<=stops[0][0]) return [70,72,78]; // cool steel gray
+  for(let i=0;i<stops.length-1;i++){
+    const a=stops[i],b=stops[i+1];
+    if(T<=b[0]){ const f=(T-a[0])/(b[0]-a[0]);
+      return [a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f, a[3]+(b[3]-a[3])*f]; }
+  }
+  return [stops[stops.length-1][1],stops[stops.length-1][2],stops[stops.length-1][3]];
+}
+const rgb=c=>`rgb(${c.map(x=>Math.round(x)).join(',')})`;
+
+/* ============================================================
+   THREE.js scene
+============================================================ */
+const app=document.getElementById('app');
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x080c12);
+scene.fog=new THREE.Fog(0x080c12,14,30);
+
+const camera=new THREE.PerspectiveCamera(42,innerWidth/innerHeight,0.1,100);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+app.appendChild(renderer.domElement);
+
+/* Lights */
+scene.add(new THREE.AmbientLight(0x4a5a6e,1.15));
+const key=new THREE.DirectionalLight(0xcfe0ff,1.05); key.position.set(5,8,6); scene.add(key);
+const rim=new THREE.DirectionalLight(0x9ab8ff,0.5); rim.position.set(-6,3,-5); scene.add(rim);
+const fill=new THREE.DirectionalLight(0xffffff,0.42); fill.position.set(0,4,9); scene.add(fill);
+const LIGHTDIR=new THREE.Vector3(5,8,6).normalize();
+
+/* Ground grid (CAD feel) */
+const grid=new THREE.GridHelper(40,40,0x1c2836,0x121a24);
+grid.position.y=-1.4; scene.add(grid);
+
+/* ---- Geometry constants ---- */
+const GAP=3.4, WR=0.17, HALF=GAP/2;
+
+/* Heated center wire — custom incandescence shader */
+const wireGeo=new THREE.CylinderGeometry(WR,WR,GAP,48,1);
+const wireUniforms={
+  uHalfLen:{value:HALF}, uSpread:{value:0}, uAmbient:{value:AMBIENT},
+  uColorTemp:{value:AMBIENT}, uShowFlecks:{value:0}, uLightDir:{value:LIGHTDIR}
+};
+const wireMat=new THREE.ShaderMaterial({
+  uniforms:wireUniforms,
+  vertexShader:`
+    varying float vAxis; varying vec3 vLP; varying vec3 vN;
+    uniform float uHalfLen;
+    void main(){
+      vAxis=position.y/uHalfLen;
+      vLP=position;
+      vN=normalize(mat3(modelMatrix)*normal);
+      gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
+    }`,
+  fragmentShader:`
+    precision highp float;
+    varying float vAxis; varying vec3 vLP; varying vec3 vN;
+    uniform float uSpread,uAmbient,uColorTemp,uShowFlecks; uniform vec3 uLightDir;
+    float hash(vec3 p){p=fract(p*0.3183099+0.1);p*=17.0;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
+    vec3 ramp(float T){
+      vec3 c=vec3(0.235,0.055,0.0);
+      c=mix(c,vec3(0.47,0.04,0.0),smoothstep(480.,560.,T));
+      c=mix(c,vec3(0.67,0.10,0.0),smoothstep(560.,650.,T));
+      c=mix(c,vec3(0.80,0.18,0.0),smoothstep(650.,730.,T));
+      c=mix(c,vec3(0.92,0.27,0.02),smoothstep(730.,800.,T));
+      c=mix(c,vec3(1.0,0.41,0.06),smoothstep(800.,860.,T));
+      c=mix(c,vec3(1.0,0.55,0.12),smoothstep(860.,930.,T));
+      c=mix(c,vec3(1.0,0.69,0.22),smoothstep(930.,990.,T));
+      c=mix(c,vec3(1.0,0.80,0.35),smoothstep(990.,1050.,T));
+      c=mix(c,vec3(1.0,0.92,0.59),smoothstep(1050.,1150.,T));
+      return c;
+    }
+    void main(){
+      float u=abs(vAxis);
+      float front=uSpread*0.97;
+      float hot=1.0-smoothstep(front-0.18,front+0.18,u);   // center-out heat front
+      float jawSink=clamp((1.0-u)/0.22,0.30,1.0);          // cooler gradient near jaws
+      float tf=hot*jawSink;
+      float T=uAmbient+(uColorTemp-uAmbient)*tf;
+
+      vec3 hue=ramp(T);
+      float glow=smoothstep(470.0,700.0,T);
+      float diff=clamp(dot(normalize(vN),normalize(uLightDir)),0.0,1.0);
+      vec3 steel=vec3(0.36,0.38,0.42)*(0.5+0.5*diff);
+      vec3 col=mix(steel,hue,clamp(glow*1.15,0.0,1.0));
+      col+=hue*smoothstep(560.0,1000.0,T)*1.35;            // additive brightness
+
+      if(uShowFlecks>0.5){                                  // gray scale flecks
+        float n=hash(floor(vLP*34.0));
+        float sp=step(0.80,n)*smoothstep(795.0,855.0,T);
+        col=mix(col,vec3(0.30,0.29,0.27),sp*0.8);
+      }
+      gl_FragColor=vec4(col,1.0);
+    }`
+});
+/* Mechanical (clamp / load) constants + refs */
+const WIRE_UP=0.5, SHOE_UP=0.68, MECH_RATE=0.7, LEVER_CLOSED=Math.PI/4;
+const heads=[], levers=[];
+function smooth(a,b,x){x=Math.max(0,Math.min(1,(x-a)/(b-a)));return x*x*(3-2*x);}
+
+const wireGroup=new THREE.Group(); scene.add(wireGroup);
+const wire=new THREE.Mesh(wireGeo,wireMat);
+wire.rotation.z=Math.PI/2;   // lay horizontal along X
+wireGroup.add(wire);
+
+/* Cool wire stubs beyond jaws */
+const stubMat=new THREE.MeshStandardMaterial({color:0x707a86,metalness:.55,roughness:.42,emissive:0x0c1014});
+function stub(sign){
+  const g=new THREE.CylinderGeometry(WR,WR,2.4,32);
+  const m=new THREE.Mesh(g,stubMat); m.rotation.z=Math.PI/2;
+  m.position.x=sign*(HALF+1.2); wireGroup.add(m);
+}
+stub(1); stub(-1);
+
+/* Copper electrode jaws + steel shoes + lever */
+const copper=new THREE.MeshStandardMaterial({color:0xd68a44,metalness:.7,roughness:.34,emissive:0x1a0d04});
+const shoe=new THREE.MeshStandardMaterial({color:0xb6bec8,metalness:.6,roughness:.38,emissive:0x0e1216});
+const barMat=new THREE.MeshStandardMaterial({color:0x333941,metalness:.7,roughness:.4});
+const gripMat=new THREE.MeshStandardMaterial({color:0xd23b2c,metalness:.15,roughness:.5,emissive:0x340904});
+function jaw(sign){
+  const grp=new THREE.Group();
+
+  // ---- Lower copper die with V-groove (fixed) ----
+  const s=new THREE.Shape();
+  s.moveTo(-0.62,-1.15);
+  s.lineTo( 0.62,-1.15);
+  s.lineTo( 0.62, 0.06);
+  s.lineTo( 0.27, 0.06);   // right lip of the V
+  s.lineTo( 0.0, -0.22);   // V vertex (wire rests here)
+  s.lineTo(-0.27, 0.06);   // left lip of the V
+  s.lineTo(-0.62, 0.06);
+  s.lineTo(-0.62,-1.15);
+  const dieGeo=new THREE.ExtrudeGeometry(s,{depth:0.95,bevelEnabled:false});
+  dieGeo.translate(0,0,-0.475);
+  const die=new THREE.Mesh(dieGeo,copper);
+  die.rotation.y=Math.PI/2;          // extrude depth -> wire axis (X)
+  grp.add(die);
+
+  // ---- Clamp head (moves up/down): flat shoe + arm + lever ----
+  const head=new THREE.Group();
+  const shoeMesh=new THREE.Mesh(new THREE.BoxGeometry(0.95,0.32,0.86),shoe);
+  shoeMesh.position.y=0.33;          // flat underside touches wire top (y=0.17) when closed
+  head.add(shoeMesh);
+  const arm=new THREE.Mesh(new THREE.BoxGeometry(0.40,0.52,0.55),shoe);
+  arm.position.y=0.72; head.add(arm);
+  const capL=new THREE.Mesh(new THREE.CylinderGeometry(0.10,0.10,0.62,16),copper);
+  capL.rotation.z=Math.PI/2; capL.position.set(0,0.95,0.20); head.add(capL);
+
+  // lever pivots at the FRONT of the head; opens/closes toward the front (about X)
+  const lever=new THREE.Group();
+  const bar=new THREE.Mesh(new THREE.CylinderGeometry(0.052,0.052,1.20,14),barMat);
+  bar.position.y=0.60; lever.add(bar);
+  const grip=new THREE.Mesh(new THREE.CylinderGeometry(0.085,0.085,0.5,14),gripMat);
+  grip.position.y=1.15; lever.add(grip);
+  lever.position.set(0,0.95,0.20); head.add(lever);
+
+  grp.add(head);
+  grp.position.x=sign*(HALF+0.5);
+  scene.add(grp);
+  heads.push(head); levers.push(lever);
+}
+jaw(1); jaw(-1);
+
+/* Apply mechanical state from sim.mechClamp (0=open,1=closed) */
+function applyMech(m){
+  const wireLower=smooth(0,0.5,m);   // wire descends into V during first half
+  const clampClose=smooth(0.5,1,m);  // shoe+lever close during second half
+  wireGroup.position.y=(1-wireLower)*WIRE_UP;
+  const headY=(1-clampClose)*SHOE_UP;
+  for(const h of heads) h.position.y=headY;
+  for(const l of levers) l.rotation.x=clampClose*LEVER_CLOSED;   // tilt forward to close
+}
+
+/* Base plate */
+const base=new THREE.Mesh(new THREE.BoxGeometry(9,0.5,3.6),
+  new THREE.MeshStandardMaterial({color:0x232c38,metalness:.4,roughness:.7}));
+base.position.y=-1.35; scene.add(base);
+
+/* ============================================================
+   Custom orbit controls (rotate / zoom / pan) — CAD style
+============================================================ */
+const ctrl={az:0.6,pol:1.15,rad:9.5,target:new THREE.Vector3(0,-0.1,0),
+  min:5,max:18};
+function updateCam(){
+  const s=Math.sin(ctrl.pol),c=Math.cos(ctrl.pol);
+  camera.position.set(
+    ctrl.target.x+ctrl.rad*s*Math.sin(ctrl.az),
+    ctrl.target.y+ctrl.rad*c,
+    ctrl.target.z+ctrl.rad*s*Math.cos(ctrl.az));
+  camera.lookAt(ctrl.target);
+}
+updateCam();
+let drag=null,lastX,lastY;
+const el=renderer.domElement;
+el.addEventListener('mousedown',e=>{drag=e.button===2||e.shiftKey?'pan':'rot';lastX=e.clientX;lastY=e.clientY;});
+addEventListener('mouseup',()=>drag=null);
+addEventListener('mousemove',e=>{
+  if(!drag)return; const dx=e.clientX-lastX,dy=e.clientY-lastY; lastX=e.clientX;lastY=e.clientY;
+  if(drag==='rot'){ ctrl.az-=dx*0.006; ctrl.pol=Math.max(0.25,Math.min(2.7,ctrl.pol-dy*0.006)); }
+  else{ const p=ctrl.rad*0.0016;
+    const right=new THREE.Vector3().subVectors(camera.position,ctrl.target).cross(camera.up).normalize();
+    ctrl.target.addScaledVector(right,-dx*p); ctrl.target.y+=dy*p; }
+  updateCam();
+});
+el.addEventListener('wheel',e=>{e.preventDefault();
+  ctrl.rad=Math.max(ctrl.min,Math.min(ctrl.max,ctrl.rad+e.deltaY*0.01)); updateCam();},{passive:false});
+el.addEventListener('contextmenu',e=>e.preventDefault());
+/* touch */
+let tp=[];
+el.addEventListener('touchstart',e=>{tp=[...e.touches];},{passive:false});
+el.addEventListener('touchmove',e=>{e.preventDefault();
+  if(e.touches.length===1&&tp.length===1){
+    ctrl.az-=(e.touches[0].clientX-tp[0].clientX)*0.006;
+    ctrl.pol=Math.max(0.25,Math.min(2.7,ctrl.pol-(e.touches[0].clientY-tp[0].clientY)*0.006));
+  }else if(e.touches.length===2&&tp.length===2){
+    const d0=Math.hypot(tp[0].clientX-tp[1].clientX,tp[0].clientY-tp[1].clientY);
+    const d1=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    ctrl.rad=Math.max(ctrl.min,Math.min(ctrl.max,ctrl.rad-(d1-d0)*0.02));
+  }
+  tp=[...e.touches]; updateCam();
+},{passive:false});
+
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);});
+
+/* ============================================================
+   Simulation state machine
+============================================================ */
+const sim={mode:'idle',grade:null,queue:[],cur:null,temp:AMBIENT,spread:0,
+  peak:AMBIENT,hold:0,phaseStart:AMBIENT,mechClamp:0,pending:null};
+const HEAT_RATE=90, COOL_K=0.15, HOLD_F=4.5, HOLD_N=3.2, HOLD_BETWEEN=2.4;
+let speed=2, paused=false;
+
+function startSequence(steps){
+  sim.queue=steps.map(s=>({...s}));
+  nextStep(true);
+}
+function nextStep(){
+  if(sim.queue.length===0){ sim.mode='cooldone'; return; }
+  sim.cur=sim.queue.shift();
+  sim.mode='heating'; sim.peak=sim.cur.peak; sim.hold=0;
+  wireUniforms.uShowFlecks.value = sim.cur.flecks?1:0;
+}
+
+function tick(dtS,dtR){
+  const c=sim.cur;
+  if(sim.mode==='loading'){                       // wire slides in, clamp closes
+    sim.mechClamp=Math.min(1,sim.mechClamp+MECH_RATE*dtS);
+    if(sim.mechClamp>=1){ sim.mechClamp=1; startSequence(sim.pending); }
+    return;
+  }
+  if(sim.mode==='ejecting'){                       // clamp opens, wire slides out
+    sim.mechClamp=Math.max(0,sim.mechClamp-MECH_RATE*dtS);
+    if(sim.temp>AMBIENT+1) sim.temp+=(AMBIENT-sim.temp)*COOL_K*dtS*0.4;
+    if(sim.mechClamp<=0){ sim.mechClamp=0; finishEject(); }
+    return;
+  }
+  if(sim.mode==='heating'){
+    sim.temp+=HEAT_RATE*dtS;
+    sim.spread=Math.min(1,Math.max(0,(sim.temp-AMBIENT)/(sim.peak-AMBIENT))*1.12);
+    if(sim.temp>=sim.peak){ sim.temp=sim.peak; sim.mode='hold'; sim.hold=0; }
+  }
+  else if(sim.mode==='hold'){
+    sim.hold+=dtR; sim.spread=1;               // real-time pause → color legible en el pico
+    if(sim.hold>=(c.flecks?HOLD_F:HOLD_N)) sim.mode='cooling';
+  }
+  else if(sim.mode==='cooling'){
+    var kf=COOL_K*(1.0-0.34*Math.min(1,Math.max(0,(sim.temp-450)/560)));  // slower at high temp
+    sim.temp+=(AMBIENT-sim.temp)*kf*dtS;         // Newton cooling toward ambient
+    sim.spread=Math.min(1,Math.max(0,(sim.temp-AMBIENT)/(sim.peak-AMBIENT)));
+    if(sim.temp<=c.coolTo){
+      if(sim.queue.length>0){ sim.mode='between'; sim.hold=0; }
+      else { sim.mode='cooldone'; sim.hold=0; }   // reached 60 °C, ready
+    }
+  }
+  else if(sim.mode==='between'){
+    sim.temp+=(AMBIENT-sim.temp)*COOL_K*dtS*0.4;
+    sim.hold+=dtR;
+    if(sim.hold>=HOLD_BETWEEN) nextStep();
+  }
+  else if(sim.mode==='cooldone'){                  // hold "ready", then open + eject
+    sim.hold+=dtR;
+    if(sim.hold>=2.0) sim.mode='ejecting';
+  }
+  wireUniforms.uColorTemp.value=sim.temp;
+  wireUniforms.uSpread.value=sim.spread;
+}
+
+/* ============================================================
+   UI rendering
+============================================================ */
+function buildGrades(){
+  const box=document.getElementById('grades'); box.innerHTML='';
+  Object.values(GRADES).forEach(gr=>{
+    const el=document.createElement('div');
+    el.className='grade'; el.style.setProperty('--g',gr.g); el.dataset.k=gr.key;
+    const pill=gr.anneals===0?t('noAnneal'):(gr.anneals===1?t('req1'):t('req2'));
+    el.innerHTML=`<div class="bar"></div>
+      <div class="gt"><b>${gr.name[LANG]}</b><span class="aisi">${gr.aisi}</span></div>
+      <div class="gd">${gr.desc[LANG]}</div>
+      <span class="pill">${pill}</span>`;
+    el.onclick=()=>selectGrade(gr.key);
+    box.appendChild(el);
+  });
+}
+function buildLegend(){
+  const rows=[[500,'Rojo oscuro','Dark red'],[650,'Rojo','Red'],[750,'Cereza','Cherry'],
+    [820,'Naranja','Orange'],[900,'Naranja-amarillo','Orange-yellow'],[1000,'Amarillo','Yellow']];
+  const box=document.getElementById('legendRows'); box.innerHTML='';
+  rows.forEach(r=>{
+    const d=document.createElement('div'); d.className='lgrow';
+    d.innerHTML=`<span class="lgsw" style="background:${rgb(incand(r[0]))}"></span>
+      <span class="lgt"><b>${r[0]} °C</b> · ${LANG==='es'?r[1]:r[2]}</span>`;
+    box.appendChild(d);
+  });
+}
+function buildStd(){
+  const tb=document.getElementById('stdTable'); tb.innerHTML='';
+  STD.forEach(r=>{
+    const tt=typeof r.tt==='string'?r.tt:r.tt[LANG];
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td class="gc" style="color:${r.g}">${r.n[LANG]}</td>
+      <td>${r.a} ${LANG==='es'?'recocido(s)':'anneal(s)'}</td>
+      <td class="n">${tt}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+let selected=null;
+function selectGrade(k){
+  if(sim.mode!=='idle') return;
+  selected=k; resetSim(false);
+  document.querySelectorAll('.grade').forEach(e=>e.classList.toggle('sel',e.dataset.k===k));
+  const gr=GRADES[k];
+  const v=document.getElementById('verdict'); v.classList.add('show');
+  v.querySelector('.ic').style.background=gr.gcss;
+  document.getElementById('vTitle').textContent=gr.name[LANG]+' · '+gr.aisi;
+  const opt=document.getElementById('optBtn'), run=document.getElementById('runBtn');
+  if(gr.anneals===0){
+    document.getElementById('vBody').innerHTML=
+      `<b style="color:var(--green)">${t('noAnneal')}.</b> ${LANG==='es'
+        ?'El bajo carbono se trefila directo sin recocido intermedio.'
+        :'Low carbon is drawn directly without intermediate annealing.'}`;
+    run.style.display='none'; opt.style.display='flex';
+  }else{
+    const list=gr.steps.map((s,i)=>`${i+1}. ${s.label[LANG]} → <b>${s.peak} °C</b>`).join('<br>');
+    document.getElementById('vBody').innerHTML=
+      `<b style="color:${gr.gcss}">${gr.anneals===1?t('req1'):t('req2')}</b><br>${list}`;
+    run.style.display='flex'; run.disabled=false; opt.style.display='none';
+  }
+}
+
+function runGrade(optional){
+  const gr=GRADES[selected]; if(!gr)return;
+  document.getElementById('runBtn').disabled=true;
+  document.getElementById('optBtn').disabled=true;
+  document.querySelectorAll('.grade').forEach(e=>e.style.pointerEvents='none');
+  sim.pending = optional ? [ {...gr.optional} ] : gr.steps.map(s=>({...s}));
+  sim.temp=AMBIENT; sim.spread=0; sim.hold=0;
+  sim.mode='loading';          // wire slides in + clamp closes, then heating starts
+}
+function resetSim(clearSel){
+  sim.mode='idle'; sim.temp=AMBIENT; sim.spread=0; sim.cur=null; sim.queue=[]; sim.peak=AMBIENT;
+  sim.mechClamp=0; sim.pending=null;
+  wireUniforms.uColorTemp.value=AMBIENT; wireUniforms.uSpread.value=0; wireUniforms.uShowFlecks.value=0;
+  paused=false;
+  const pb=document.getElementById('pauseBtn');
+  if(pb){ pb.classList.remove('paused'); pb.firstChild.textContent='⏸ ';
+    pb.querySelector('span').textContent=t('pause'); }
+  document.getElementById('runBtn').disabled=selected?false:true;
+  document.getElementById('optBtn').disabled=false;
+  document.querySelectorAll('.grade').forEach(e=>e.style.pointerEvents='auto');
+  if(clearSel){ selected=null;
+    document.querySelectorAll('.grade').forEach(e=>e.classList.remove('sel'));
+    document.getElementById('verdict').classList.remove('show');
+    document.getElementById('runBtn').style.display='flex';
+    document.getElementById('optBtn').style.display='none';
+    document.getElementById('runBtn').disabled=true;
+  }
+}
+function finishEject(){                 // wire ejected → back to start state
+  sim.mode='idle'; sim.cur=null; sim.queue=[]; sim.pending=null;
+  sim.temp=AMBIENT; sim.spread=0;
+  wireUniforms.uColorTemp.value=AMBIENT; wireUniforms.uSpread.value=0; wireUniforms.uShowFlecks.value=0;
+  document.querySelectorAll('.grade').forEach(e=>e.style.pointerEvents='auto');
+  document.getElementById('runBtn').disabled=selected?false:true;
+  document.getElementById('optBtn').disabled=false;
+}
+
+/* HUD update */
+function updateHUD(){
+  const T=Math.round(sim.temp);
+  const col=rgb(incand(sim.temp));
+  const val=document.getElementById('tempVal');
+  val.innerHTML=`${T}<span>°C</span>`;
+  val.style.color = sim.temp>480?col:'#e7edf3';
+  const fill=document.getElementById('fill');
+  fill.style.height=Math.min(100,(sim.temp/1150)*100)+'%';
+  fill.style.background = sim.temp>460?`linear-gradient(0deg,${rgb(incand(Math.max(460,sim.temp-120)))},${col})`:'#3a4a5c';
+
+  // target line
+  let tg='';
+  if(sim.cur&&(sim.mode==='heating'||sim.mode==='hold'))
+    tg=`${t('target')}: <b>${sim.peak} °C</b>`;
+  else if(sim.mode==='cooling'||sim.mode==='between')
+    tg=`${t('target')}: <b>${sim.cur?sim.cur.coolTo:DRAW_READY} °C</b>`;
+  else if(sim.mode==='cooldone') tg=`<b>${DRAW_READY} °C</b> · ${t('stepReady')}`;
+  document.getElementById('tgt').innerHTML=tg;
+
+  // status
+  const step=document.getElementById('stStep'), msg=document.getElementById('stMsg'),
+        prog=document.getElementById('stProg');
+  msg.classList.remove('big');
+  let stepTxt='',msgTxt='',p=0;
+  const label=sim.cur?sim.cur.label[LANG]:'';
+  if(sim.mode==='idle'){ msgTxt=t('idle'); }
+  else if(sim.mode==='loading'){ stepTxt=t('loading'); msgTxt=t('loadMsg');
+    p=sim.mechClamp*100; msg.style.color='var(--cyan)'; }
+  else if(sim.mode==='ejecting'){ stepTxt=t('ejecting'); msgTxt=t('ejectMsg');
+    p=(1-sim.mechClamp)*100; msg.style.color='var(--cyan)'; }
+  else if(sim.mode==='heating'){ stepTxt=label+' · '+t('stepHeat'); msgTxt=t('heating');
+    p=(sim.temp-AMBIENT)/(sim.peak-AMBIENT)*100; }
+  else if(sim.mode==='hold'){ stepTxt=label; msgTxt=sim.cur.flecks?t('holdF'):t('hold'); p=100;
+    if(sim.cur.flecks) msg.style.color='var(--amber)'; }
+  else if(sim.mode==='cooling'){ stepTxt=label+' · '+t('stepCool'); msgTxt=t('cooling');
+    p=100-(sim.temp-sim.cur.coolTo)/(sim.peak-sim.cur.coolTo)*100; }
+  else if(sim.mode==='between'){ stepTxt='→'; msgTxt=t('between'); p=50; msg.style.color='var(--cyan)'; }
+  else if(sim.mode==='cooldone'){ stepTxt=''; msgTxt=t('ready'); msg.classList.add('big'); p=100; }
+  if(sim.mode!=='hold'&&sim.mode!=='between'&&sim.mode!=='loading'&&sim.mode!=='ejecting'&&sim.mode!=='cooldone')
+    msg.style.color='';
+  if(paused && sim.mode!=='idle'){ msgTxt=t('paused'); msg.classList.add('big');
+    msg.style.color='var(--amber)'; }
+  step.textContent=stepTxt; msg.innerHTML=msgTxt;
+  prog.style.width=Math.max(0,Math.min(100,p))+'%';
+}
+
+/* ============================================================
+   Buttons + language
+============================================================ */
+document.getElementById('runBtn').onclick=()=>runGrade(false);
+document.getElementById('optBtn').onclick=()=>runGrade(true);
+document.getElementById('resetBtn').onclick=()=>resetSim(true);
+const pauseBtn=document.getElementById('pauseBtn');
+pauseBtn.onclick=()=>{
+  if(sim.mode==='idle')return;
+  paused=!paused;
+  pauseBtn.classList.toggle('paused',paused);
+  pauseBtn.firstChild.textContent = paused?'▶ ':'⏸ ';
+  pauseBtn.querySelector('span').textContent = paused?t('resume'):t('pause');
+};
+document.querySelectorAll('.speeds button').forEach(b=>{
+  b.onclick=()=>{ speed=+b.dataset.s;
+    document.querySelectorAll('.speeds button').forEach(x=>x.classList.toggle('on',x===b)); };
+});
+function setLang(l){
+  LANG=l;
+  document.getElementById('es').classList.toggle('on',l==='es');
+  document.getElementById('en').classList.toggle('on',l==='en');
+  document.querySelectorAll('[data-i]').forEach(e=>{const k=e.getAttribute('data-i');
+    if(I18N[l][k])e.innerHTML=I18N[l][k];});
+  buildGrades(); buildLegend(); buildStd();
+  const pb=document.getElementById('pauseBtn');
+  if(pb) pb.querySelector('span').textContent = paused?I18N[l].resume:I18N[l].pause;
+  if(selected) selectGrade(selected);
+}
+document.getElementById('es').onclick=()=>setLang('es');
+document.getElementById('en').onclick=()=>setLang('en');
+
+/* init */
+buildGrades(); buildLegend(); buildStd(); setLang('es');
+
+/* ============================================================
+   Render loop
+============================================================ */
+const clock=new THREE.Clock();
+function loop(){
+  const raw=Math.min(clock.getDelta(),0.05);
+  if(sim.mode!=='idle' && !paused) tick(raw*speed, raw);
+  applyMech(sim.mechClamp);
+  updateHUD();
+  renderer.render(scene,camera);
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
